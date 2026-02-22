@@ -1,0 +1,19 @@
+version: "2"
+
+formatters:
+  enable:
+    - gofumpt
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - misspell
+    - unconvert
+    - gocritic
+
+run:
+  timeout: 5m
