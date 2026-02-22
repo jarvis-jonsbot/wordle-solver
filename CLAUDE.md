@@ -26,7 +26,7 @@ make dev         # Run the solver interactively
 
 ## Directory Structure
 
-```
+```text
 wordle-solver/
 ├── cmd/
 │   └── wordle-solver/
