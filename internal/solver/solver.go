@@ -23,15 +23,45 @@ type Guess struct {
 // Solver tracks constraints and filters candidates.
 type Solver struct {
 	candidates []string
-	HardMode   bool
-	guesses    []Guess
+	scorer     scoring.Scorer
+	hardMode   bool
+	guesses    []Guess // history for hard-mode enforcement
 }
 
-// New creates a solver with the given word list.
-func New(words []string) *Solver {
+// Option configures a Solver.
+type Option func(*Solver)
+
+// WithScorer sets the scoring algorithm.
+func WithScorer(s scoring.Scorer) Option {
+	return func(sol *Solver) {
+		sol.scorer = s
+	}
+}
+
+// WithHardMode enables hard mode constraint enforcement on suggestions.
+func WithHardMode(enabled bool) Option {
+	return func(sol *Solver) {
+		sol.hardMode = enabled
+	}
+}
+
+// New creates a solver with the given word list and options.
+func New(words []string, opts ...Option) *Solver {
 	cp := make([]string, len(words))
 	copy(cp, words)
-	return &Solver{candidates: cp}
+	s := &Solver{
+		candidates: cp,
+		scorer:     scoring.FrequencyScorer{},
+	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// HardMode returns whether hard mode is enabled.
+func (s *Solver) HardMode() bool {
+	return s.hardMode
 }
 
 // Candidates returns the current candidate list.
@@ -52,42 +82,49 @@ func (s *Solver) Apply(g Guess) {
 }
 
 // Suggest returns the best next guess from remaining candidates.
-// In hard mode, filters candidates to only those satisfying all known constraints.
 func (s *Solver) Suggest() string {
-	candidates := s.candidates
-	if s.HardMode && len(s.guesses) > 0 {
-		candidates = s.filterByConstraints(candidates)
-	}
-	return scoring.Best(candidates)
-}
-
-// filterByConstraints returns only words that satisfy all known constraints from previous guesses.
-func (s *Solver) filterByConstraints(words []string) []string {
-	var filtered []string
-	for _, w := range words {
-		if s.satisfiesConstraints(w) {
-			filtered = append(filtered, w)
+	if s.hardMode && len(s.guesses) > 0 {
+		valid := s.hardModeFilter(s.candidates)
+		if len(valid) > 0 {
+			return scoring.Best(valid, s.scorer)
 		}
 	}
-	return filtered
+	return scoring.Best(s.candidates, s.scorer)
 }
 
-// satisfiesConstraints checks if a word satisfies all known green and yellow constraints.
-func (s *Solver) satisfiesConstraints(word string) bool {
+// ValidateHardMode checks if a word satisfies hard-mode constraints.
+// Returns true if the word is valid under current constraints.
+func (s *Solver) ValidateHardMode(word string) bool {
 	for _, g := range s.guesses {
-		for i := 0; i < 5; i++ {
-			ch := g.Word[i]
-			switch g.Feedback[i] {
-			case Green:
-				// Green: letter must be at this position
-				if word[i] != ch {
-					return false
-				}
-			case Yellow:
-				// Yellow: letter must appear somewhere in the word
-				if !contains(word, ch) {
-					return false
-				}
+		if !satisfiesHardMode(word, g) {
+			return false
+		}
+	}
+	return true
+}
+
+// hardModeFilter returns only candidates that satisfy hard-mode constraints.
+func (s *Solver) hardModeFilter(words []string) []string {
+	var result []string
+	for _, w := range words {
+		if s.ValidateHardMode(w) {
+			result = append(result, w)
+		}
+	}
+	return result
+}
+
+// satisfiesHardMode checks if a word uses all revealed hints from a guess.
+func satisfiesHardMode(word string, g Guess) bool {
+	for i := 0; i < 5; i++ {
+		switch g.Feedback[i] {
+		case Green:
+			if word[i] != g.Word[i] {
+				return false
+			}
+		case Yellow:
+			if !contains(word, g.Word[i]) {
+				return false
 			}
 		}
 	}
@@ -111,12 +148,9 @@ func matches(word string, g Guess) bool {
 				return false
 			}
 		case Gray:
-			// Gray means the letter doesn't appear in any non-green/yellow position.
-			// Simple check: if it's not green/yellow elsewhere, it shouldn't be in the word.
 			if !hasGreenOrYellow(g, ch) && contains(word, ch) {
 				return false
 			}
-			// If the letter IS green/yellow elsewhere, just ensure it's not at this position.
 			if hasGreenOrYellow(g, ch) && word[i] == ch {
 				return false
 			}
