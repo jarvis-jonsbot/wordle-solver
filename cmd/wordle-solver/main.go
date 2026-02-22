@@ -74,45 +74,50 @@ func run() error {
 		if !*jsonOutput {
 			fmt.Printf("Round %d (%d candidates remaining)\n", round, len(s.Candidates()))
 			fmt.Printf("Suggestion: %s\n", suggestion)
-			fmt.Print("Enter guess: ")
 		}
 
+		// Read and validate guess.
 		var guess string
-		if _, err := fmt.Scanln(&guess); err != nil {
-			return fmt.Errorf("reading guess: %w", err)
-		}
-		guess = strings.ToUpper(strings.TrimSpace(guess))
-		if len(guess) != 5 {
+		for {
 			if !*jsonOutput {
-				fmt.Println("Guess must be 5 letters.")
+				fmt.Print("Enter guess: ")
 			}
-			round--
-			continue
+			if _, err := fmt.Scanln(&guess); err != nil {
+				return fmt.Errorf("reading guess: %w", err)
+			}
+			guess = strings.ToUpper(strings.TrimSpace(guess))
+			if len(guess) != 5 {
+				if !*jsonOutput {
+					fmt.Println("Guess must be 5 letters.")
+				}
+				continue
+			}
+			if *hardMode && !s.ValidateHardMode(guess) {
+				if !*jsonOutput {
+					fmt.Println("Invalid guess — hard mode requires using all revealed hints.")
+				}
+				continue
+			}
+			break
 		}
 
-		// Validate hard mode.
-		if *hardMode && !s.ValidateHardMode(guess) {
-			if !*jsonOutput {
-				fmt.Println("Invalid guess — hard mode requires using all revealed hints.")
-			}
-			round--
-			continue
-		}
-
-		if !*jsonOutput {
-			fmt.Print("Enter feedback (G=green, Y=yellow, .=gray): ")
-		}
+		// Read and validate feedback.
 		var fb string
-		if _, err := fmt.Scanln(&fb); err != nil {
-			return fmt.Errorf("reading feedback: %w", err)
-		}
-		fb = strings.ToUpper(strings.TrimSpace(fb))
-		if len(fb) != 5 {
+		for {
 			if !*jsonOutput {
-				fmt.Println("Feedback must be 5 characters.")
+				fmt.Print("Enter feedback (G=green, Y=yellow, .=gray): ")
 			}
-			round--
-			continue
+			if _, err := fmt.Scanln(&fb); err != nil {
+				return fmt.Errorf("reading feedback: %w", err)
+			}
+			fb = strings.ToUpper(strings.TrimSpace(fb))
+			if len(fb) != 5 {
+				if !*jsonOutput {
+					fmt.Println("Feedback must be 5 characters.")
+				}
+				continue
+			}
+			break
 		}
 
 		var feedback [5]solver.Feedback
