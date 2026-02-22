@@ -23,6 +23,8 @@ type Guess struct {
 // Solver tracks constraints and filters candidates.
 type Solver struct {
 	candidates []string
+	HardMode   bool
+	guesses    []Guess
 }
 
 // New creates a solver with the given word list.
@@ -39,6 +41,7 @@ func (s *Solver) Candidates() []string {
 
 // Apply narrows candidates based on a guess and its feedback.
 func (s *Solver) Apply(g Guess) {
+	s.guesses = append(s.guesses, g)
 	var filtered []string
 	for _, w := range s.candidates {
 		if matches(w, g) {
@@ -49,8 +52,46 @@ func (s *Solver) Apply(g Guess) {
 }
 
 // Suggest returns the best next guess from remaining candidates.
+// In hard mode, filters candidates to only those satisfying all known constraints.
 func (s *Solver) Suggest() string {
-	return scoring.Best(s.candidates)
+	candidates := s.candidates
+	if s.HardMode && len(s.guesses) > 0 {
+		candidates = s.filterByConstraints(candidates)
+	}
+	return scoring.Best(candidates)
+}
+
+// filterByConstraints returns only words that satisfy all known constraints from previous guesses.
+func (s *Solver) filterByConstraints(words []string) []string {
+	var filtered []string
+	for _, w := range words {
+		if s.satisfiesConstraints(w) {
+			filtered = append(filtered, w)
+		}
+	}
+	return filtered
+}
+
+// satisfiesConstraints checks if a word satisfies all known green and yellow constraints.
+func (s *Solver) satisfiesConstraints(word string) bool {
+	for _, g := range s.guesses {
+		for i := 0; i < 5; i++ {
+			ch := g.Word[i]
+			switch g.Feedback[i] {
+			case Green:
+				// Green: letter must be at this position
+				if word[i] != ch {
+					return false
+				}
+			case Yellow:
+				// Yellow: letter must appear somewhere in the word
+				if !contains(word, ch) {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // matches checks if a candidate word is consistent with the given guess feedback.

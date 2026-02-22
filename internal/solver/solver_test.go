@@ -50,3 +50,66 @@ func TestApplyReducesCandidates(t *testing.T) {
 		t.Errorf("expected fewer candidates after apply, got %d -> %d", before, after)
 	}
 }
+
+func TestHardModeGreenConstraint(t *testing.T) {
+	words := []string{"CRANE", "CRATE", "CRAFT", "PLANT", "SKULL"}
+	s := New(words)
+	s.HardMode = true
+
+	// Apply guess with green C at position 0
+	s.Apply(Guess{
+		Word:     "CRANE",
+		Feedback: [5]Feedback{Green, Gray, Gray, Gray, Gray},
+	})
+
+	suggestion := s.Suggest()
+	// Suggestion must have C at position 0
+	if len(suggestion) > 0 && suggestion[0] != 'C' {
+		t.Errorf("hard mode suggestion %s violates green constraint (C at pos 0)", suggestion)
+	}
+}
+
+func TestHardModeYellowConstraint(t *testing.T) {
+	words := []string{"CRANE", "REACT", "TRACE", "PLANT", "ACRES"}
+	s := New(words)
+	s.HardMode = true
+
+	// Apply guess with yellow C, R, A (must appear in word)
+	s.Apply(Guess{
+		Word:     "CRANE",
+		Feedback: [5]Feedback{Yellow, Yellow, Yellow, Gray, Gray},
+	})
+
+	suggestion := s.Suggest()
+	// Suggestion must contain C, R, and A
+	if len(suggestion) > 0 {
+		hasC := contains(suggestion, 'C')
+		hasR := contains(suggestion, 'R')
+		hasA := contains(suggestion, 'A')
+		if !hasC || !hasR || !hasA {
+			t.Errorf("hard mode suggestion %s missing yellow letters (C,R,A)", suggestion)
+		}
+	}
+}
+
+func TestHardModeOffAllowsAnyCandidate(t *testing.T) {
+	// Simple test: verify hard mode off allows suggestions from remaining candidates
+	words := []string{"BATCH", "CATCH", "WATCH"}
+	s := New(words)
+	s.HardMode = false
+
+	s.Apply(Guess{
+		Word:     "LUMPY",
+		Feedback: [5]Feedback{Gray, Gray, Gray, Gray, Gray},
+	})
+
+	// All gray - L,U,M,P,Y not in word
+	// All three candidates (BATCH, CATCH, WATCH) should remain
+	suggestion := s.Suggest()
+	if suggestion == "" {
+		t.Error("expected non-empty suggestion")
+	}
+	if len(s.Candidates()) != 3 {
+		t.Errorf("expected 3 candidates, got %d", len(s.Candidates()))
+	}
+}

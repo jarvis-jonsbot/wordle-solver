@@ -3,6 +3,7 @@ package main
 
 import (
 	"embed"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -15,7 +16,7 @@ import (
 //go:embed words.txt
 var wordsFS embed.FS
 
-func run() error {
+func run(hardMode bool) error {
 	f, err := wordsFS.Open("words.txt")
 	if err != nil {
 		return fmt.Errorf("opening word list: %w", err)
@@ -28,6 +29,7 @@ func run() error {
 	}
 
 	s := solver.New(words)
+	s.HardMode = hardMode
 	fmt.Printf("Loaded %d words.\n", len(s.Candidates()))
 	fmt.Printf("Best opener: %s\n\n", s.Suggest())
 
@@ -89,7 +91,10 @@ func run() error {
 }
 
 func main() {
-	if err := run(); err != nil {
+	hardMode := flag.Bool("hard-mode", false, "Enable hard mode (revealed hints must be used in subsequent guesses)")
+	flag.Parse()
+
+	if err := run(*hardMode); err != nil {
 		log.Fatal(err)
 	}
 	os.Exit(0)
