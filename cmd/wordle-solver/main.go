@@ -15,7 +15,7 @@ import (
 	"github.com/jarvis-jonsbot/wordle-solver/internal/wordlist"
 )
 
-//go:embed words.txt
+//go:embed words.txt priority_words.txt
 var wordsFS embed.FS
 
 // RoundOutput is the JSON structure for each round in --json mode.
@@ -32,8 +32,24 @@ type RoundOutput struct {
 func run() error {
 	hardMode := flag.Bool("hard-mode", false, "Enable hard mode (must use revealed hints)")
 	jsonOutput := flag.Bool("json", false, "Output each round as JSONL")
-	scorerName := flag.String("scorer", "frequency", "Scoring algorithm: frequency or entropy")
+	scorerName := flag.String("scorer", "weighted-entropy", "Scoring algorithm: frequency, entropy, or weighted-entropy")
+	priorityWeight := flag.Float64("priority-weight", 0.1, "Weight for non-priority words in weighted-entropy scorer (0=pure priority, 1=uniform)")
 	flag.Parse()
+
+	// Load priority word list (used by weighted-entropy scorer).
+	pf, err := wordsFS.Open("priority_words.txt")
+	if err != nil {
+		return fmt.Errorf("opening priority word list: %w", err)
+	}
+	priorityWords, err := wordlist.Load(pf)
+	_ = pf.Close()
+	if err != nil {
+		return fmt.Errorf("loading priority words: %w", err)
+	}
+	prioritySet := make(map[string]struct{}, len(priorityWords))
+	for _, w := range priorityWords {
+		prioritySet[w] = struct{}{}
+	}
 
 	var sc scoring.Scorer
 	switch strings.ToLower(*scorerName) {
@@ -41,8 +57,13 @@ func run() error {
 		sc = scoring.FrequencyScorer{}
 	case "entropy":
 		sc = scoring.EntropyScorer{}
+	case "weighted-entropy":
+		sc = scoring.WeightedEntropyScorer{
+			PriorityWords:  prioritySet,
+			PriorityWeight: *priorityWeight,
+		}
 	default:
-		return fmt.Errorf("unknown scorer %q (use 'frequency' or 'entropy')", *scorerName)
+		return fmt.Errorf("unknown scorer %q (use 'frequency', 'entropy', or 'weighted-entropy')", *scorerName)
 	}
 
 	f, err := wordsFS.Open("words.txt")
@@ -59,11 +80,14 @@ func run() error {
 	s := solver.New(words, solver.WithScorer(sc), solver.WithHardMode(*hardMode))
 
 	if !*jsonOutput {
-		fmt.Printf("Loaded %d words.\n", len(s.Candidates()))
+		fmt.Printf("Loaded %d words (%d priority).\n", len(s.Candidates()), len(priorityWords))
 		if *hardMode {
 			fmt.Println("Hard mode enabled.")
 		}
 		fmt.Printf("Scorer: %s\n", *scorerName)
+		if strings.ToLower(*scorerName) == "weighted-entropy" {
+			fmt.Printf("Priority weight (β): %.2f\n", *priorityWeight)
+		}
 		fmt.Printf("Best opener: %s\n\n", s.Suggest())
 	}
 
