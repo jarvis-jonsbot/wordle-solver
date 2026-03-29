@@ -12,22 +12,12 @@ import (
 
 	"github.com/jarvis-jonsbot/wordle-solver/internal/scoring"
 	"github.com/jarvis-jonsbot/wordle-solver/internal/solver"
+	"github.com/jarvis-jonsbot/wordle-solver/internal/types"
 	"github.com/jarvis-jonsbot/wordle-solver/internal/wordlist"
 )
 
 //go:embed words.txt priority_words.txt
 var wordsFS embed.FS
-
-// RoundOutput is the JSON structure for each round in --json mode.
-type RoundOutput struct {
-	Round      int    `json:"round"`
-	Candidates int    `json:"candidates"`
-	Suggestion string `json:"suggestion"`
-	Guess      string `json:"guess"`
-	Feedback   string `json:"feedback"`
-	Remaining  int    `json:"remaining"`
-	Solved     bool   `json:"solved,omitempty"`
-}
 
 func run() error {
 	hardMode := flag.Bool("hard-mode", false, "Enable hard mode (must use revealed hints)")
@@ -174,7 +164,7 @@ func run() error {
 		s.Apply(solver.Guess{Word: guess, Feedback: feedback})
 
 		if *jsonOutput {
-			out := RoundOutput{
+			out := types.RoundOutput{
 				Round:      round,
 				Candidates: len(s.Candidates()),
 				Suggestion: suggestion,
