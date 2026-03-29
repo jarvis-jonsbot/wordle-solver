@@ -21,6 +21,14 @@ type WeightedEntropyScorer struct {
 	// PriorityWeight (β) is the weight assigned to non-priority words.
 	// Must be in [0, 1]. Default 0.1.
 	PriorityWeight float64
+	// AllWords is the complete word list to consider as potential guesses.
+	// If empty, only candidates are scored.
+	AllWords []string
+}
+
+// SetAllWords implements AllWordsScorer.
+func (s *WeightedEntropyScorer) SetAllWords(allWords []string) {
+	s.AllWords = allWords
 }
 
 // weight returns the prior probability weight for a candidate word.
@@ -38,6 +46,8 @@ func (s WeightedEntropyScorer) weight(word string) float64 {
 // Score computes weighted-entropy scores for each candidate.
 // Each candidate's contribution to a feedback bucket is its weight, not 1.
 // The entropy is then computed over the resulting weighted distribution.
+// If AllWords is set, all words are considered as potential guesses; otherwise
+// only candidates are scored.
 func (s WeightedEntropyScorer) Score(candidates []string) map[string]float64 {
 	if len(candidates) == 0 {
 		return nil
@@ -52,9 +62,15 @@ func (s WeightedEntropyScorer) Score(candidates []string) map[string]float64 {
 		return nil
 	}
 
-	scores := make(map[string]float64, len(candidates))
+	// Determine which words to score as guesses.
+	guessPool := candidates
+	if len(s.AllWords) > 0 {
+		guessPool = s.AllWords
+	}
 
-	for _, guess := range candidates {
+	scores := make(map[string]float64, len(guessPool))
+
+	for _, guess := range guessPool {
 		// Accumulate weighted probability mass per feedback pattern.
 		buckets := make(map[[5]byte]float64)
 		for _, answer := range candidates {

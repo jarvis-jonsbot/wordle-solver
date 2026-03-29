@@ -23,6 +23,7 @@ type Guess struct {
 // Solver tracks constraints and filters candidates.
 type Solver struct {
 	candidates []string
+	allWords   []string // complete word list for scoring non-candidates
 	scorer     scoring.Scorer
 	hardMode   bool
 	guesses    []Guess // history for hard-mode enforcement
@@ -42,6 +43,13 @@ func WithScorer(s scoring.Scorer) Option {
 func WithHardMode(enabled bool) Option {
 	return func(sol *Solver) {
 		sol.hardMode = enabled
+	}
+}
+
+// WithAllWords sets the complete word list for scoring non-candidate guesses.
+func WithAllWords(words []string) Option {
+	return func(sol *Solver) {
+		sol.allWords = words
 	}
 }
 
@@ -82,7 +90,16 @@ func (s *Solver) Apply(g Guess) {
 }
 
 // Suggest returns the best next guess from remaining candidates.
+// If the scorer implements AllWordsScorer and allWords is set, it will
+// consider all valid words as potential guesses.
 func (s *Solver) Suggest() string {
+	// If scorer supports AllWords, set it before scoring.
+	if len(s.allWords) > 0 {
+		if aws, ok := s.scorer.(scoring.AllWordsScorer); ok {
+			aws.SetAllWords(s.allWords)
+		}
+	}
+
 	if s.hardMode && len(s.guesses) > 0 {
 		valid := s.hardModeFilter(s.candidates)
 		if len(valid) > 0 {

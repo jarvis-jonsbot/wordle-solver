@@ -11,16 +11,27 @@ type Scorer interface {
 	Score(candidates []string) map[string]float64
 }
 
+// AllWordsScorer is an optional interface for scorers that can evaluate
+// all valid words as potential guesses, not just remaining candidates.
+type AllWordsScorer interface {
+	Scorer
+	SetAllWords(allWords []string)
+}
+
 // Best returns the highest-scoring word from candidates using the given scorer.
+// If the scorer supports AllWordsScorer, it may score words beyond the candidate list.
 func Best(candidates []string, scorer Scorer) string {
 	scores := scorer.Score(candidates)
 	if len(scores) == 0 {
 		return ""
 	}
-	best := candidates[0]
-	for _, w := range candidates {
-		if scores[w] > scores[best] {
+	// Find the best word from all scored words (not just candidates).
+	var best string
+	var bestScore float64
+	for w, s := range scores {
+		if best == "" || s > bestScore {
 			best = w
+			bestScore = s
 		}
 	}
 	return best
@@ -60,19 +71,37 @@ func (FrequencyScorer) Score(candidates []string) map[string]float64 {
 
 // EntropyScorer scores words by expected information gain (Shannon entropy
 // over the distribution of possible feedback patterns).
-type EntropyScorer struct{}
+type EntropyScorer struct {
+	// AllWords is the complete word list to consider as potential guesses.
+	// If empty, only candidates are scored.
+	AllWords []string
+}
+
+// SetAllWords implements AllWordsScorer.
+func (e *EntropyScorer) SetAllWords(allWords []string) {
+	e.AllWords = allWords
+}
 
 // Score computes entropy-based scores for each candidate.
 // For each potential guess, it simulates feedback against every possible answer
 // and measures how evenly the guess partitions the remaining candidates.
-func (EntropyScorer) Score(candidates []string) map[string]float64 {
+// If AllWords is set, all words are considered as potential guesses; otherwise
+// only candidates are scored.
+func (e EntropyScorer) Score(candidates []string) map[string]float64 {
 	if len(candidates) == 0 {
 		return nil
 	}
-	scores := make(map[string]float64, len(candidates))
+
+	// Determine which words to score as guesses.
+	guessPool := candidates
+	if len(e.AllWords) > 0 {
+		guessPool = e.AllWords
+	}
+
+	scores := make(map[string]float64, len(guessPool))
 	n := float64(len(candidates))
 
-	for _, guess := range candidates {
+	for _, guess := range guessPool {
 		// Count how many candidates produce each feedback pattern.
 		buckets := make(map[[5]byte]int)
 		for _, answer := range candidates {

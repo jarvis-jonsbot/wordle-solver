@@ -110,3 +110,48 @@ func TestEntropyScorerDistinct(t *testing.T) {
 		t.Errorf("expected ~0 entropy for identical words, got %f", scores["AAAAA"])
 	}
 }
+
+func TestEntropyScorerWithAllWords(t *testing.T) {
+	// Test that when AllWords is set, non-candidate words can be scored.
+	candidates := []string{"AAAAA", "BBBBB"}
+	allWords := []string{"AAAAA", "BBBBB", "CRANE", "SLATE"}
+
+	s := EntropyScorer{AllWords: allWords}
+	scores := s.Score(candidates)
+
+	// Should have scores for all words in allWords, not just candidates.
+	if len(scores) != len(allWords) {
+		t.Errorf("expected %d scores, got %d", len(allWords), len(scores))
+	}
+
+	// CRANE and SLATE should be scored even though they're not candidates.
+	if _, ok := scores["CRANE"]; !ok {
+		t.Error("CRANE should be scored")
+	}
+	if _, ok := scores["SLATE"]; !ok {
+		t.Error("SLATE should be scored")
+	}
+
+	// Non-candidate words might score higher than candidates.
+	// CRANE/SLATE should have higher entropy than AAAAA against this tiny candidate pool.
+	if scores["AAAAA"] > scores["CRANE"] {
+		t.Log("Note: AAAAA scored higher than CRANE, which is unusual")
+	}
+}
+
+func TestEntropyScorerBackwardCompat(t *testing.T) {
+	// Test backward compatibility: if AllWords is not set, only candidates are scored.
+	candidates := []string{"CRANE", "CRATE", "TRACE"}
+	s := EntropyScorer{} // AllWords not set
+	scores := s.Score(candidates)
+
+	if len(scores) != len(candidates) {
+		t.Errorf("expected %d scores, got %d", len(candidates), len(scores))
+	}
+
+	for _, w := range candidates {
+		if _, ok := scores[w]; !ok {
+			t.Errorf("missing score for candidate %s", w)
+		}
+	}
+}

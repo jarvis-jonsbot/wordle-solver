@@ -113,3 +113,51 @@ func TestWeightedEntropyScorer_BestIsStable(t *testing.T) {
 		t.Errorf("Best() returned %q which is not in candidates", best)
 	}
 }
+
+func TestWeightedEntropyScorer_WithAllWords(t *testing.T) {
+	// Test that when AllWords is set, non-candidate words can be scored.
+	candidates := []string{"AAAAA", "BBBBB"}
+	allWords := []string{"AAAAA", "BBBBB", "CRANE", "SLATE", "AUDIO"}
+	priority := prioritySet("CRANE", "SLATE")
+
+	s := WeightedEntropyScorer{
+		PriorityWords:  priority,
+		PriorityWeight: 0.1,
+		AllWords:       allWords,
+	}
+	scores := s.Score(candidates)
+
+	// Should have scores for all words in allWords, not just candidates.
+	if len(scores) != len(allWords) {
+		t.Errorf("expected %d scores, got %d", len(allWords), len(scores))
+	}
+
+	// CRANE, SLATE, and AUDIO should be scored even though they're not candidates.
+	for _, word := range []string{"CRANE", "SLATE", "AUDIO"} {
+		if _, ok := scores[word]; !ok {
+			t.Errorf("%s should be scored", word)
+		}
+	}
+}
+
+func TestWeightedEntropyScorer_BackwardCompat(t *testing.T) {
+	// Test backward compatibility: if AllWords is not set, only candidates are scored.
+	candidates := []string{"CRANE", "SLATE", "AUDIO"}
+	priority := prioritySet("CRANE", "SLATE")
+	s := WeightedEntropyScorer{
+		PriorityWords:  priority,
+		PriorityWeight: 0.1,
+		// AllWords not set
+	}
+	scores := s.Score(candidates)
+
+	if len(scores) != len(candidates) {
+		t.Errorf("expected %d scores, got %d", len(candidates), len(scores))
+	}
+
+	for _, w := range candidates {
+		if _, ok := scores[w]; !ok {
+			t.Errorf("missing score for candidate %s", w)
+		}
+	}
+}

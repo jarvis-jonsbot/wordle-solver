@@ -34,6 +34,7 @@ func run() error {
 	jsonOutput := flag.Bool("json", false, "Output each round as JSONL")
 	scorerName := flag.String("scorer", "weighted-entropy", "Scoring algorithm: frequency, entropy, or weighted-entropy")
 	priorityWeight := flag.Float64("priority-weight", 0.1, "Weight for non-priority words in weighted-entropy scorer (0=pure priority, 1=uniform)")
+	opener := flag.String("opener", "SALET", "Opening word (leave empty to compute)")
 	flag.Parse()
 
 	// Load priority word list (used by weighted-entropy scorer).
@@ -77,7 +78,15 @@ func run() error {
 		return fmt.Errorf("loading words: %w", err)
 	}
 
-	s := solver.New(words, solver.WithScorer(sc), solver.WithHardMode(*hardMode))
+	s := solver.New(words, solver.WithScorer(sc), solver.WithHardMode(*hardMode), solver.WithAllWords(words))
+
+	// Determine the opening suggestion.
+	var openingSuggestion string
+	if *opener != "" {
+		openingSuggestion = strings.ToUpper(*opener)
+	} else {
+		openingSuggestion = s.Suggest()
+	}
 
 	if !*jsonOutput {
 		fmt.Printf("Loaded %d words (%d priority).\n", len(s.Candidates()), len(priorityWords))
@@ -88,13 +97,18 @@ func run() error {
 		if strings.ToLower(*scorerName) == "weighted-entropy" {
 			fmt.Printf("Priority weight (β): %.2f\n", *priorityWeight)
 		}
-		fmt.Printf("Best opener: %s\n\n", s.Suggest())
+		fmt.Printf("Best opener: %s\n\n", openingSuggestion)
 	}
 
 	enc := json.NewEncoder(os.Stdout)
 
 	for round := 1; round <= 6; round++ {
-		suggestion := s.Suggest()
+		var suggestion string
+		if round == 1 {
+			suggestion = openingSuggestion
+		} else {
+			suggestion = s.Suggest()
+		}
 		if !*jsonOutput {
 			fmt.Printf("Round %d (%d candidates remaining)\n", round, len(s.Candidates()))
 			fmt.Printf("Suggestion: %s\n", suggestion)
