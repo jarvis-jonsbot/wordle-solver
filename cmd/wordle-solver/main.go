@@ -19,12 +19,42 @@ import (
 //go:embed words.txt priority_words.txt
 var wordsFS embed.FS
 
+// simulateFeedback computes Wordle feedback for a guess against a known answer.
+// Returns a 5-char string: G=green, Y=yellow, .=gray.
+func simulateFeedback(guess, answer string) string {
+	result := [5]byte{'.', '.', '.', '.', '.'}
+	remaining := make(map[byte]int)
+
+	// First pass: greens.
+	for i := range 5 {
+		if guess[i] == answer[i] {
+			result[i] = 'G'
+		} else {
+			remaining[answer[i]]++
+		}
+	}
+
+	// Second pass: yellows.
+	for i := range 5 {
+		if result[i] == 'G' {
+			continue
+		}
+		if remaining[guess[i]] > 0 {
+			result[i] = 'Y'
+			remaining[guess[i]]--
+		}
+	}
+
+	return string(result[:])
+}
+
 func run() error {
 	hardMode := flag.Bool("hard-mode", false, "Enable hard mode (must use revealed hints)")
 	jsonOutput := flag.Bool("json", false, "Output each round as JSONL")
 	scorerName := flag.String("scorer", "weighted-entropy", "Scoring algorithm: frequency, entropy, or weighted-entropy")
 	priorityWeight := flag.Float64("priority-weight", 0.1, "Weight for non-priority words in weighted-entropy scorer (0=pure priority, 1=uniform)")
 	opener := flag.String("opener", "SALET", "Opening word (leave empty to compute)")
+	simulate := flag.String("simulate", "", "Simulate solving a known answer (no stdin needed; implies --json)")
 	flag.Parse()
 
 	// Load priority word list (used by weighted-entropy scorer).
@@ -78,7 +108,7 @@ func run() error {
 		openingSuggestion = s.Suggest()
 	}
 
-	if !*jsonOutput {
+	if !*jsonOutput && *simulate == "" {
 		fmt.Printf("Loaded %d words (%d priority).\n", len(s.Candidates()), len(priorityWords))
 		if *hardMode {
 			fmt.Println("Hard mode enabled.")
@@ -91,6 +121,58 @@ func run() error {
 	}
 
 	enc := json.NewEncoder(os.Stdout)
+
+	// Simulation mode: solve against a known answer without stdin.
+	if *simulate != "" {
+		answer := strings.ToUpper(*simulate)
+		for round := 1; round <= 6; round++ {
+			var suggestion string
+			if round == 1 {
+				suggestion = openingSuggestion
+			} else {
+				suggestion = s.Suggest()
+			}
+
+			fb := simulateFeedback(suggestion, answer)
+
+			var feedback [5]solver.Feedback
+			for i, ch := range fb {
+				switch ch {
+				case 'G':
+					feedback[i] = solver.Green
+				case 'Y':
+					feedback[i] = solver.Yellow
+				default:
+					feedback[i] = solver.Gray
+				}
+			}
+
+			solved := fb == "GGGGG"
+			s.Apply(solver.Guess{Word: suggestion, Feedback: feedback})
+
+			out := types.RoundOutput{
+				Round:      round,
+				Candidates: len(s.Candidates()),
+				Suggestion: suggestion,
+				Guess:      suggestion,
+				Feedback:   fb,
+				Remaining:  len(s.Candidates()),
+				Solved:     solved,
+			}
+			if err := enc.Encode(out); err != nil {
+				return fmt.Errorf("encoding JSON: %w", err)
+			}
+
+			if solved {
+				return nil
+			}
+
+			if len(s.Candidates()) == 0 {
+				return nil
+			}
+		}
+		return nil
+	}
 
 	for round := 1; round <= 6; round++ {
 		var suggestion string
